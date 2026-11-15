@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1322" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Serpiente" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <title>Robot Serpiente — Simulador y Anatomía 3D</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background-color: #0b1322; color: #f8fafc;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      user-select: none; -webkit-user-select: none;
+    }
+    #scene-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 1; touch-action: none; }
+
+    /* Visibilidad por vista */
+    .view-anat .sim-only { display: none !important; }
+    body:not(.view-anat) .anat-only { display: none !important; }
+
+    /* HUD superior */
+    .hud-top {
+      position: fixed; top: 10px; left: 10px; right: 10px; z-index: 10;
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; pointer-events: none;
+    }
+    .telemetry-card {
+      pointer-events: auto; background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(71, 85, 105, 0.7); border-radius: 14px; padding: 8px 11px;
+      backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); max-width: 74vw;
+    }
+    .title-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .dot-live { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; flex-shrink: 0; }
+    .dot-blue { background: #38bdf8; box-shadow: 0 0 8px #38bdf8; }
+    .app-title { font-size: 12px; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+    .metric-box { background: rgba(2, 6, 23, 0.65); border: 1px solid rgba(51, 65, 85, 0.6); border-radius: 8px; padding: 4px 6px; text-align: center; }
+    .metric-label { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; display: block; }
+    .metric-val { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; margin-top: 1px; display: block; white-space: nowrap; }
+    .val-orange { color: #fb923c; }
+    .val-sky { color: #38bdf8; }
+    .val-green { color: #4ade80; }
+
+    .btn-controls-toggle {
+      pointer-events: auto; background: linear-gradient(135deg, #f97316, #ea580c); color: #fff; border: none;
+      border-radius: 14px; padding: 10px 13px; font-size: 12px; font-weight: 700; display: flex; align-items: center;
+      gap: 6px; box-shadow: 0 6px 20px rgba(249, 115, 22, 0.4); cursor: pointer;
+    }
+    .btn-controls-toggle:active { transform: scale(0.96); }
+
+    /* Barra inferior */
+    .bottom-bar {
+      position: fixed; bottom: 12px; left: 10px; right: 10px; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+    }
+    .bar-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; pointer-events: none; }
+    .pill-group {
+      pointer-events: auto; background: rgba(15, 23, 42, 0.88); border: 1px solid rgba(71, 85, 105, 0.7);
+      border-radius: 999px; padding: 4px; display: flex; gap: 4px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    }
+    .pill-btn { background: transparent; color: #cbd5e1; border: none; border-radius: 999px; padding: 6px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }
+    .pill-btn.active { background: #0284c7; color: #ffffff; }
+    .pill-btn.play-active { background: #16a34a; color: #ffffff; }
+    .pill-btn.view-active { background: #f97316; color: #ffffff; }
+    .pill-btn.explode { background: #f97316; color: #fff; padding: 6px 16px; }
+
+    /* Panel de controles */
+    .control-panel {
+      position: fixed; top: 64px; right: 10px; width: calc(100vw - 20px); max-width: 320px;
+      max-height: calc(100vh - 160px); overflow-y: auto; z-index: 20; background: rgba(15, 23, 42, 0.94);
+      border: 1px solid rgba(100, 116, 139, 0.75); border-radius: 16px; padding: 14px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65); transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .control-panel.hidden { opacity: 0; pointer-events: none; transform: translateY(-8px) scale(0.98); }
+    .panel-section { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(51, 65, 85, 0.7); }
+    .panel-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+    .section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin-bottom: 7px; display: block; }
+    .seg-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+    .seg-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .opt-btn { background: rgba(30, 41, 59, 0.9); color: #cbd5e1; border: 1px solid rgba(71, 85, 105, 0.7); border-radius: 9px; padding: 7px 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
+    .opt-btn.selected { background: #f97316; color: #ffffff; border-color: #fb923c; }
+    .opt-btn.selected-blue { background: #0284c7; color: #ffffff; border-color: #38bdf8; }
+    .slider-row { margin-bottom: 9px; }
+    .slider-header { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; }
+    .slider-val { font-family: ui-monospace, monospace; color: #fb923c; font-weight: 700; }
+    input[type="range"] { width: 100%; accent-color: #f97316; height: 5px; background: #334155; border-radius: 4px; }
+    .chip-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip { background: rgba(30, 41, 59, 0.9); color: #cbd5e1; border: 1px solid rgba(71, 85, 105, 0.7); border-radius: 999px; padding: 5px 9px; font-size: 10.5px; font-weight: 600; cursor: pointer; }
+    .chip:active { background: #f97316; color: #fff; }
+
+    /* Ficha de inspección */
+    .inspector-card {
+      position: fixed; bottom: 112px; left: 10px; right: 10px; max-width: 360px; margin: 0 auto; z-index: 25;
+      background: rgba(15, 23, 42, 0.95); border: 1px solid #f97316; border-radius: 14px; padding: 12px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75);
+    }
+    .inspector-card.hidden { display: none; }
+    .insp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .insp-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; color: #fb923c; letter-spacing: 0.06em; }
+    .insp-title { font-size: 13px; font-weight: 700; color: #ffffff; }
+    .insp-close { background: #1e293b; color: #cbd5e1; border: none; border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 700; cursor: pointer; }
+    .insp-desc { font-size: 11px; color: #cbd5e1; line-height: 1.4; margin-bottom: 7px; }
+    .insp-specs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; background: rgba(2, 6, 23, 0.7); padding: 6px 8px; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 10px; color: #38bdf8; }
+
+    /* v3: móvil (notch, barra del navegador), toque y accesibilidad */
+    html, body { height: 100dvh; }
+    #scene-canvas { width: 100%; height: 100%; }
+    .hud-top { top: calc(10px + env(safe-area-inset-top, 0px)); left: calc(10px + env(safe-area-inset-left, 0px)); right: calc(10px + env(safe-area-inset-right, 0px)); }
+    .bottom-bar { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+    .control-panel { top: calc(64px + env(safe-area-inset-top, 0px)); max-height: calc(100dvh - 170px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overscroll-behavior: contain; }
+    .inspector-card { bottom: calc(112px + env(safe-area-inset-bottom, 0px)); }
+    .pill-btn { padding: 9px 12px; min-height: 36px; }
+    .pill-btn.explode { padding: 9px 16px; }
+    .opt-btn { padding: 10px 6px; }
+    .chip { padding: 8px 11px; }
+    .insp-close { padding: 6px 10px; }
+    button:focus-visible, input:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { .control-panel { transition: none; } }
+    .joystick { position: fixed; left: calc(18px + env(safe-area-inset-left, 0px)); bottom: calc(128px + env(safe-area-inset-bottom, 0px)); width: 120px; height: 120px; border-radius: 50%; background: rgba(15,23,42,0.6); border: 2px solid rgba(249,115,22,0.6); z-index: 12; touch-action: none; }
+    .joy-knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg,#fb923c,#ea580c); box-shadow: 0 4px 14px rgba(0,0,0,0.5); pointer-events: none; }
+  </style>
+</head>
+<body>
+
+  <canvas id="scene-canvas"></canvas>
+
+  <header class="hud-top">
+    <!-- Telemetría del simulador -->
+    <div id="hud-sim" class="telemetry-card sim-only">
+      <div class="title-row">
+        <span class="dot-live"></span>
+        <span class="app-title">Robot Serpiente 3D • Rescate</span>
+      </div>
+      <div class="metrics-grid">
+        <div class="metric-box"><span class="metric-label">Velocidad</span><span id="hud-speed" class="metric-val val-orange">0.0 cm/s</span></div>
+        <div class="metric-box"><span class="metric-label">Distancia</span><span id="hud-dist" class="metric-val val-sky">0.00 m</span></div>
+        <div class="metric-box"><span class="metric-label">Hueco Mín.</span><span id="hud-gap" class="metric-val val-green">8.5 cm</span></div>
+      </div>
+    </div>
+
+    <!-- Ficha técnica de la vista Anatomía -->
+    <div id="hud-anat" class="telemetry-card anat-only">
+      <div class="title-row">
+        <span class="dot-live dot-blue"></span>
+        <span class="app-title">Anatomía • Ficha técnica</span>
+      </div>
+      <div class="metrics-grid">
+        <div class="metric-box"><span class="metric-label">Módulos</span><span id="an-mods" class="metric-val val-orange">12</span></div>
+        <div class="metric-box"><span class="metric-label">Servos</span><span id="an-servos" class="metric-val val-orange">11</span></div>
+        <div class="metric-box"><span class="metric-label">Ancho</span><span class="metric-val val-sky">~7.5 cm</span></div>
+        <div class="metric-box"><span class="metric-label">Cerebro</span><span class="metric-val val-green">ESP32</span></div>
+        <div class="metric-box"><span class="metric-label">Driver</span><span class="metric-val val-green">PCA9685</span></div>
+        <div class="metric-box"><span class="metric-label">Costo MXN</span><span class="metric-val val-sky">$2.2k-4k</span></div>
+      </div>
+    </div>
+
+    <button id="btn-toggle-panel" class="btn-controls-toggle" aria-label="Abrir controles">
+      <span>⚙️ Controles</span>
+    </button>
+  </header>
+
+  <aside id="control-panel" class="control-panel hidden">
+    <div class="panel-section sim-only">
+      <span class="section-label">Modo de Locomoción</span>
+      <div class="seg-grid-3">
+        <button id="mode-wave" class="opt-btn selected">Onda Auto</button>
+        <button id="mode-pause" class="opt-btn">Pausa</button>
+        <button id="mode-manual" class="opt-btn">🕹 Joystick</button>
+      </div>
+      <div id="manual-box" style="display:none; margin-top:8px; background:rgba(2,6,23,0.6); padding:8px; border-radius:10px; border:1px solid rgba(249,115,22,0.4);">
+        <div class="seg-grid-3" style="margin-bottom:7px;">
+          <button id="btn-left" class="opt-btn">← Izq</button>
+          <button id="btn-center" class="opt-btn">Recto</button>
+          <button id="btn-right" class="opt-btn">Der →</button>
+        </div>
+        <div class="slider-row" style="margin-bottom:0;">
+          <div class="slider-header"><span>Dirección (giro)</span><span id="val-manual-yaw" class="slider-val">0°</span></div>
+          <input id="slider-manual-yaw" type="range" min="-45" max="45" value="0" />
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section sim-only">
+      <span class="section-label">Escenario</span>
+      <div class="seg-grid-2">
+        <button id="env-studio" class="opt-btn selected-blue">Estudio 3D</button>
+        <button id="env-arena" class="opt-btn">Arena Escombros</button>
+        <button id="env-forest" class="opt-btn">🌲 Bosque</button>
+        <button id="env-desert" class="opt-btn">🏜 Desierto</button>
+        <label id="env-photo" class="opt-btn" style="grid-column:1/-1;">📷 Mi imagen de fondo<input id="bg-file" type="file" accept="image/*" hidden></label>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <span class="section-label">Acabado y Módulos</span>
+      <div class="seg-grid-2" style="margin-bottom:8px;">
+        <button id="style-tactical" class="opt-btn selected">Naranja Táctico</button>
+        <button id="style-python" class="opt-btn">Pitón Real</button>
+        <button id="style-coral" class="opt-btn">Coral</button>
+        <button id="style-neon" class="opt-btn">Neón Cyber</button>
+      </div>
+      <div class="slider-row" style="margin-bottom:0;">
+        <div class="slider-header"><span>Módulos articulados</span><span id="val-segments" class="slider-val">12</span></div>
+        <input id="slider-segments" type="range" min="6" max="20" step="1" value="12" />
+      </div>
+    </div>
+
+    <div class="panel-section sim-only">
+      <span class="section-label">Parámetros de Onda Sinusoidal</span>
+      <div class="slider-row">
+        <div class="slider-header"><span>Amplitud por servo (A)</span><span id="val-amp" class="slider-val">26°</span></div>
+        <input id="slider-amp" type="range" min="10" max="42" step="1" value="26" />
+      </div>
+      <div class="slider-row">
+        <div class="slider-header"><span>Frecuencia (ω)</span><span id="val-freq" class="slider-val">2.2 Hz</span></div>
+        <input id="slider-freq" type="range" min="0.5" max="4.5" step="0.1" value="2.2" />
+      </div>
+      <div class="slider-row" style="margin-bottom:0;">
+        <div class="slider-header"><span>Desfase entre servos (φ)</span><span id="val-phase" class="slider-val">0.65 rad</span></div>
+        <input id="slider-phase" type="range" min="0.35" max="1.05" step="0.05" value="0.65" />
+      </div>
+    </div>
+
+    <div class="panel-section anat-only">
+      <span class="section-label">Separación de piezas</span>
+      <div class="slider-row" style="margin-bottom:0;">
+        <div class="slider-header"><span>Armado ↔ Desarmado</span><span id="val-explode" class="slider-val">0%</span></div>
+        <input id="slider-explode" type="range" min="0" max="100" step="1" value="0" />
+      </div>
+    </div>
+
+    <div class="panel-section anat-only">
+      <span class="section-label">Índice de piezas (toca para ver ficha)</span>
+      <div id="part-chips" class="chip-grid"></div>
+    </div>
+
+    <div style="font-size:10px; color:#94a3b8; line-height:1.35;">
+      <span id="tip-sim">👆 <b>1 dedo:</b> rotar • <b>2 dedos:</b> zoom/mover • <b>Toca una pieza</b> del robot para inspeccionarla. <b>Teclado:</b> Espacio pausa, ←/→ dirigen, ↑ recto, R reinicia, Esc cierra.</span>
+      <span id="tip-anat" style="display:none;">👆 Toca <b>Desarmar</b> para separar los módulos y luego toca cualquier pieza para ver su ficha técnica.</span>
+    </div>
+  </aside>
+
+  <div id="inspector-card" class="inspector-card hidden">
+    <div class="insp-header">
+      <div>
+        <div id="insp-tag" class="insp-tag">COMPONENTE</div>
+        <div id="insp-title" class="insp-title">Cabezal Sensorial</div>
+      </div>
+      <button id="insp-close" class="insp-close">✕</button>
+    </div>
+    <p id="insp-desc" class="insp-desc"></p>
+    <div id="insp-specs" class="insp-specs"></div>
+  </div>
+
+  <div id="joystick" class="joystick sim-only" style="display:none"><div id="joy-knob" class="joy-knob"></div></div>
+
+  <nav class="bottom-bar">
+    <div class="bar-row">
+      <div class="pill-group">
+        <button id="view-sim" class="pill-btn view-active">🐍 Simulador</button>
+        <button id="view-anat" class="pill-btn">🔧 Anatomía</button>
+      </div>
+    </div>
+    <div class="bar-row">
+      <div class="pill-group sim-only">
+        <button id="quick-play" class="pill-btn play-active">⏸ Pausar</button>
+        <button id="quick-reset" class="pill-btn" aria-label="Reiniciar simulación" title="Reiniciar (R)">↺</button>
+      </div>
+      <div class="pill-group anat-only">
+        <button id="btn-explode" class="pill-btn explode">🔧 Desarmar</button>
+      </div>
+      <div class="pill-group">
+        <button id="cam-persp" class="pill-btn active">3D</button>
+        <button id="cam-top" class="pill-btn">Superior</button>
+        <button id="cam-front" class="pill-btn">Frontal</button>
+        <button id="cam-side" class="pill-btn">Lateral</button>
+        <button id="cam-pov" class="pill-btn sim-only">👁 Ojos</button>
+      </div>
+    </div>
+  </nav>
+
+  <script>
+    /**
+     * MOTOR 3D NATIVO (JavaScript puro, sin dependencias)
+     *
+     * LOCOMOCIÓN: "seguir al líder". La cabeza avanza describiendo una trayectoria
+     * ondulada y cada módulo recorre exactamente el mismo rastro (como una serpiente
+     * real: todo el cuerpo pasa por donde pasó la cabeza).
+     *   desplazamiento lateral de la cabeza = A_lat · sin(k · d),  k = φ / paso
+     * El desfase entre servos φ fija la longitud de onda; la amplitud por servo fija
+     * cuánto se curva el cuerpo. En la arena, la amplitud se reduce sola al llegar a
+     * un hueco estrecho (el robot "se afina" para pasar).
+     */
+    (function () {
+      'use strict';
+      const $ = (id) => document.getElementById(id);
+      const canvas = $('scene-canvas');
+      const ctx = canvas.getContext('2d');
+
+      const STEP = 0.54;      // distancia entre centros de módulos
+      const MAX_SEG = 20;
+      const CM_PER_UNIT = 19.7; // 0.38 u de ancho ≈ 7.5 cm
+
+      const GATES = [
+        { z:  0.6, gap: 0.95, label: '15 cm' },
+        { z: -0.9, gap: 0.78, label: '12 cm' },
+        { z: -2.4, gap: 0.65, label: '10 cm' },
+        { z: -3.9, gap: 0.54, label: '8 cm' }
+      ];
+
+      const SCENES = {
+        studio: { bg: ['#16233b', '#0d1628', '#070c17'], grid: 'rgba(71,85,105,0.24)' },
+        arena:  { bg: ['#16233b', '#0d1628', '#070c17'], grid: 'rgba(71,85,105,0.24)' },
+        photo:  { bg: ['#16233b', '#0d1628', '#070c17'], grid: 'rgba(148,163,184,0.18)' },
+        forest: { bg: ['#2d5a3d', '#143325', '#07140d'], grid: 'rgba(110,170,120,0.14)', sky: ['#6fa392', '#3c6a58'], ground: ['#2c4a30', '#101f13'] },
+        desert: { bg: ['#e9b872', '#b8793f', '#5a3319'], grid: 'rgba(255,230,170,0.14)', sky: ['#f0bd7c', '#f8e0b4'], ground: ['#dcaa6c', '#a86f38'] }
+      };
+      const PATTERNS = {
+        tactical: { accent: [249, 115, 22], skin: (i, v) => v > 0.72 ? [249, 115, 22] : v < -0.5 ? [30, 36, 46] : [46, 53, 66] },
+        python: { accent: [166, 124, 70], skin: (i, v) => v < -0.5 ? [226, 205, 160] : (v > 0.45 && i % 2 === 0) ? [74, 46, 24] : [166, 124, 70] },
+        coral: { accent: [200, 30, 30], skin: (i, v) => [[200, 30, 30], [240, 200, 40], [20, 20, 20], [240, 200, 40]][i % 4] },
+        neon: { accent: [34, 211, 238], skin: (i, v) => v > 0.72 ? (i % 2 ? [34, 211, 238] : [217, 70, 239]) : v < -0.5 ? [12, 18, 34] : [24, 32, 64] }
+      };
+
+      // =========================================================================
+      // 1. ESTADO
+      // =========================================================================
+      const state = {
+        view: 'sim',          // 'sim' | 'anat'
+        numSegments: 12,
+        amplitudeDeg: 26,
+        frequencyHz: 2.2,
+        phaseRad: 0.65,
+        mode: 'wave',         // 'wave' | 'pause' | 'manual'
+        env: 'studio',        // 'studio' | 'arena'
+        tacticalStyle: true,
+        manualYawDeg: 0,
+        distanceM: 0,
+        speedCmS: 0,
+        explode: 0,           // valor animado 0..1
+        explodeTarget: 0,     // objetivo 0..1
+        selectedUid: null,
+        pattern: 'tactical', pov: false, throttle: 1, bgImg: null
+      };
+
+      const cam = {
+        yaw: 0.65, pitch: 0.52, distance: 7.2,
+        panX: 0, panZ: 0, fx: 0, fz: 0,
+        targetX: 0, targetY: 0.25, targetZ: 0,
+        fov: 540, distGoal: null
+      };
+
+      const snake = {
+        trail: [], bd: 0, bx: 0, bz: 0, base: 0, s: 0,
+        hx: 0, hz: 0, heading: 0, k: 1.2, cx: 0, cz: 0
+      };
+
+      // =========================================================================
+      // 2. FICHAS TÉCNICAS DE PIEZAS
+      // =========================================================================
+      const PART_INFO = {
+        head: {
+          tag: 'MÓDULO 01 • CABEZAL DE RESCATE', title: 'Cabezal (carcasa)',
+          desc: 'Segmento frontal blindado que aloja cámara, micrófono y focos. Su visera protege contra el impacto con losas y varillas.',
+          specs: ['Video: Inalámbrico RT', 'Audio: Mic + Antiviento', 'Luz: Doble LED Alta Pot.', 'Costo Total: $2.2k-$4k MXN']
+        },
+        visor: {
+          tag: 'CABEZAL • PROTECCIÓN', title: 'Visera antigolpes',
+          desc: 'Placa que cubre el techo del cabezal y absorbe golpes contra losas para cuidar cámara y focos. Se puede reimprimir sola si se daña.',
+          specs: ['Función: Protección', 'Posición: Techo del cabezal', 'Material: PETG / TPU', 'Reemplazable: Sí']
+        },
+        camera: {
+          tag: 'CABEZAL • VISIÓN', title: 'Cámara con lente frontal',
+          desc: 'Transmite video en tiempo real desde dentro de los escombros. El bisel frontal la protege de roces.',
+          specs: ['Video: Inalámbrico RT', 'Alcance: hasta 8 m', 'Posición: Frente del cabezal', 'Uso: Localizar personas']
+        },
+        led: {
+          tag: 'CABEZAL • ILUMINACIÓN', title: 'Foco LED',
+          desc: 'Doble foco LED de alta potencia a cada lado de la cámara. Ilumina grietas y túneles oscuros.',
+          specs: ['Cantidad: 2', 'Tipo: LED Alta Pot.', 'Posición: Frente, ambos lados', 'Uso: Visión en oscuridad']
+        },
+        mic: {
+          tag: 'CABEZAL • AUDIO', title: 'Micrófono con antiviento',
+          desc: 'Capta voces y golpes de personas atrapadas. El filtro antiviento reduce el ruido del avance.',
+          specs: ['Audio: Mic + Antiviento', 'Posición: Lateral del cabezal', 'Salida: Tiempo real', 'Uso: Escuchar víctimas']
+        },
+        segment: {
+          tag: 'ESTRUCTURA MODULAR 3D', title: 'Módulo con carcasa impresa en 3D',
+          desc: 'Cuerpo articulado de perfil octogonal con rejillas de ventilación y textura lateral para evitar patinaje entre bloques de concreto.',
+          specs: ['Módulos: 6 a 20 uds', 'Ancho: ~7.5 cm', 'Material: PLA+ / PETG 3D', 'Dificultad: Media-alta']
+        },
+        shell: {
+          tag: 'MÓDULO • BASE', title: 'Carcasa inferior',
+          desc: 'Bandeja impresa en 3D que sostiene la electrónica y guía el cableado. La textura lateral evita que patine sobre el concreto.',
+          specs: ['Material: PLA+ / PETG 3D', 'Ancho: ~7.5 cm', 'Función: Soporte y guía', 'Dificultad: Media-alta']
+        },
+        cover: {
+          tag: 'MÓDULO • TAPA', title: 'Tapa superior con franja táctica',
+          desc: 'Tapa con rejillas de ventilación. Se retira para dar mantenimiento a la electrónica sin desmontar todo el robot.',
+          specs: ['Material: PLA+ / PETG 3D', 'Extra: Rejillas de aire', 'Acceso: Mantenimiento', 'Fijación: Tornillos / clips']
+        },
+        servo: {
+          tag: 'ACTUACIÓN • ARTICULACIÓN', title: 'Servomotor MG90S / MG996R',
+          desc: 'Cada articulación ejecuta la misma onda sinusoidal con desfase creciente, generando empuje lateral contra el terreno sin necesidad de ruedas.',
+          specs: ['Servos: MG90S / MG996R', 'Control: ESP32 + PCA9685', 'Ley: A·sin(ωt - i·φ)', 'Hueco Mín: 8 a 10 cm']
+        },
+        joint: {
+          tag: 'ACTUACIÓN • EJE', title: 'Eje de articulación (cardán)',
+          desc: 'Une dos módulos y transmite el giro del servo. Deja holgura para el cable para que no se fatigue en curvas cerradas.',
+          specs: ['Giro: eje vertical', 'Unión: entre módulos', 'Material: metal / impreso', 'Holgura cable: +18%']
+        },
+        cable: {
+          tag: 'ALIMENTACIÓN Y BUS DE DATOS', title: 'Cableado flexible con holgura',
+          desc: 'Arneses internos flexibles con holgura calculada en cada unión para evitar fatiga mecánica durante giros pronunciados.',
+          specs: ['Bus: PWM + Alimentación', 'Holgura: +18% por eje', 'Driver: PCA9685 16-Ch', 'MCU: ESP32 Wi-Fi/BT']
+        },
+        esp32: {
+          tag: 'ELECTRÓNICA • CONTROL', title: 'Microcontrolador ESP32',
+          desc: 'Cerebro del robot: calcula la onda sinusoidal de cada servo y permite controlarlo por Wi-Fi o Bluetooth.',
+          specs: ['MCU: ESP32 Wi-Fi/BT', 'Ley: A·sin(ωt - i·φ)', 'Salida: I²C → PCA9685', 'Ubicación: Módulo 03']
+        },
+        pca: {
+          tag: 'ELECTRÓNICA • DRIVER', title: 'Driver PWM PCA9685',
+          desc: 'Genera las señales PWM para hasta 16 servos usando solo dos cables de datos (I²C). Con 17 o más módulos hace falta un segundo driver (16 canales cada uno).',
+          specs: ['Canales: 16 PWM', 'Bus: I²C', 'Servos usados: módulos - 1', 'Ubicación: Módulo 03']
+        },
+        battery: {
+          tag: 'ENERGÍA (PROPUESTA)', title: 'Batería LiPo',
+          desc: 'Alimenta servos y electrónica. Va en un módulo central para repartir el peso. Los servos piden picos de corriente, así que conviene dimensionarla con margen.',
+          specs: ['Tipo: LiPo 2S (sugerido)', 'Ubicación: Módulo 05', 'Ojo: picos de corriente', 'Estado: por definir']
+        },
+        buck: {
+          tag: 'ENERGÍA (PROPUESTA)', title: 'Regulador de voltaje (buck)',
+          desc: 'Baja el voltaje de la batería a un valor estable para los servos y protege a la electrónica de caídas de tensión.',
+          specs: ['Salida: ~6 V (sugerido)', 'Corriente: con margen', 'Ubicación: Módulo 05', 'Estado: por definir']
+        },
+        tail: {
+          tag: 'CIERRE • COLA', title: 'Tapa de cola',
+          desc: 'Cierra el último módulo y protege el cableado en el extremo trasero del robot.',
+          specs: ['Posición: Último módulo', 'Material: PLA+ / PETG 3D', 'Función: Protección', 'Opcional: Anclaje de seguridad']
+        },
+        frame: {
+          tag: 'CUERPO INTERIOR • CHASIS', title: 'Costillas y bus interno',
+          desc: 'Costillas de refuerzo que dan rigidez al módulo y una tira de circuito que reparte alimentación y señal PWM a lo largo del cuerpo.',
+          specs: ['Costillas: 2 por módulo', 'Material: PETG / aluminio', 'Bus: Alimentación + PWM', 'Función: Rigidez y cableado']
+        },
+        scenery: {
+          tag: 'ESCENARIO', title: 'Vegetación / roca',
+          desc: 'Elemento del terreno generado al vuelo para probar el robot fuera del laboratorio: árboles, cactus y rocas.',
+          specs: ['Tipo: Procedural', 'Uso: Orientación', 'Colisión: Solo visual', 'Ojo: Se desvanece a lo lejos']
+        },
+        wall: {
+          tag: 'ARENA DE PRUEBAS', title: 'Bloque de escombro',
+          desc: 'Losa de la arena de pruebas. Los huecos van de 15 a 8 cm para comprobar hasta dónde puede colarse el robot.',
+          specs: ['Huecos: 15/12/10/8 cm', 'Uso: Prueba de paso', 'Material (sim): concreto', 'Meta: pasar sin atorarse']
+        },
+        speaker: {
+          tag: 'ARENA DE PRUEBAS', title: 'Altavoz objetivo',
+          desc: 'Fuente de sonido al fondo de la arena. Simula a una persona atrapada para probar el micrófono del cabezal.',
+          specs: ['Función: Persona simulada', 'Posición: Fondo de la arena', 'Prueba: Micrófono', 'Distancia: ~8 m']
+        }
+      };
+
+      const CHIPS = [
+        ['head', 'Cabezal'], ['visor', 'Visera'], ['camera', 'Cámara'], ['led', 'LED'], ['mic', 'Micrófono'],
+        ['shell', 'Carcasa'], ['cover', 'Tapa'], ['servo', 'Servo'], ['joint', 'Eje'], ['cable', 'Cable'],
+        ['esp32', 'ESP32'], ['pca', 'PCA9685'], ['battery', 'Batería'], ['buck', 'Regulador'], ['frame', 'Estructura'], ['tail', 'Cola']
+      ];
+
+      function firstUid(key) {
+        const map = {
+          head: 'head-0', visor: 'visor-0', camera: 'camera-0', led: 'led-0', mic: 'mic-0',
+          shell: 'shell-1', cover: 'cover-1', servo: 'servo-0', joint: 'joint-0', cable: 'cable-0',
+          esp32: 'esp32-2', pca: 'pca-2', battery: 'battery-4', buck: 'buck-4', frame: 'frame-1'
+        };
+        if (key === 'tail') return 'tail-' + (state.numSegments - 1);
+        return map[key];
+      }
+      const INTERNAL_KEYS = ['esp32', 'pca', 'battery', 'buck', 'frame'];
+
+      // =========================================================================
+      // 3. MATEMÁTICA 3D
+      // =========================================================================
+      function normalize(v) { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; }
+      function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+      function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+      function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+      function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+      function smooth(t) { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
+
+      function transformPoint(localPt, pos, yaw, pitch = 0) {
+        let [x, y, z] = localPt;
+        if (pitch !== 0) {
+          const cp = Math.cos(pitch), sp = Math.sin(pitch);
+          const y2 = y * cp - z * sp; const z2 = y * sp + z * cp; y = y2; z = z2;
+        }
+        const cy = Math.cos(yaw), sy = Math.sin(yaw);
+        return [x * cy + z * sy + pos[0], y + pos[1], -x * sy + z * cy + pos[2]];
+      }
+
+      function getCameraBasis() {
+        if (state.pov && state.view === 'sim') {
+          const hy = cam.povYaw || 0, c12 = Math.cos(0.12);
+          const f = normalize([-Math.sin(hy) * c12, -0.12, -Math.cos(hy) * c12]);
+          const eye = [snake.hx - Math.sin(hy) * 0.34, 0.30, snake.hz - Math.cos(hy) * 0.34];
+          const rt = normalize(cross(f, [0, 1, 0]));
+          return { eye, forward: f, right: rt, up: cross(rt, f) };
+        }
+        const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+        const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+        const eye = [
+          cam.targetX + cam.distance * cp * sy,
+          cam.targetY + cam.distance * sp,
+          cam.targetZ + cam.distance * cp * cy
+        ];
+        const forward = normalize([cam.targetX - eye[0], cam.targetY - eye[1], cam.targetZ - eye[2]]);
+        const right = normalize(cross(forward, [0, 1, 0]));
+        const up = cross(right, forward);
+        return { eye, forward, right, up };
+      }
+
+      function projectPoint(p, basis, width, height) {
+        const rel = sub(p, basis.eye);
+        const cx = dot(rel, basis.right), cy = dot(rel, basis.up), cz = dot(rel, basis.forward);
+        if (cz <= 0.15) return null;
+        const scale = cam.fov / cz;
+        return { x: width * 0.5 + cx * scale, y: height * 0.5 - cy * scale, z: cz, scale };
+      }
+
+      function shadeColor(rgb, k) {
+        const r = clamp(Math.round(rgb[0] * k), 0, 255);
+        const g = clamp(Math.round(rgb[1] * k), 0, 255);
+        const b = clamp(Math.round(rgb[2] * k), 0, 255);
+        return `rgb(${r},${g},${b})`;
+      }
+
+      const LIGHT_DIR = normalize([0.45, 0.82, 0.35]);
+
+      function addBoxFaces(list, center, size, yaw, pitch, baseRgb, stroke, key, label, uid) {
+        const hx = size[0] * 0.5, hy = size[1] * 0.5, hz = size[2] * 0.5;
+        const lv = [
+          [-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz],
+          [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz]
+        ];
+        const wv = lv.map(v => transformPoint(v, center, yaw, pitch));
+        const quads = [
+          { idx: [3, 2, 6, 7], isTop: true },
+          { idx: [0, 1, 2, 3] },
+          { idx: [5, 4, 7, 6] },
+          { idx: [1, 5, 6, 2] },
+          { idx: [4, 0, 3, 7] },
+          { idx: [4, 5, 1, 0] }
+        ];
+        for (let q = 0; q < quads.length; q++) {
+          const ix = quads[q].idx;
+          const p0 = wv[ix[0]], p1 = wv[ix[1]], p2 = wv[ix[2]], p3 = wv[ix[3]];
+          const normal = normalize(cross(sub(p2, p0), sub(p1, p0)));
+          const intensity = 0.38 + Math.max(0, dot(normal, LIGHT_DIR)) * 0.72;
+          list.push({
+            type: 'poly', pts: [p0, p1, p2, p3],
+            fill: shadeColor(baseRgb, intensity), stroke,
+            key, uid: uid || key, label: quads[q].isTop ? (label || null) : null
+          });
+        }
+      }
+
+      function addTube(list, c, yaw, pitch, rings, sides, colorFn, stroke, key, uid, label) {
+        const R = rings.map(r => {
+          const pts = [];
+          for (let j = 0; j < sides; j++) { const t = j / sides * 6.2832; pts.push(transformPoint([r.rx * Math.cos(t), r.ry * Math.sin(t), r.z], c, yaw, pitch)); }
+          return { pts, ctr: transformPoint([0, 0, r.z], c, yaw, pitch) };
+        });
+        for (let a = 0; a < R.length - 1; a++) for (let j = 0; j < sides; j++) {
+          const j2 = (j + 1) % sides;
+          let q = [R[a].pts[j], R[a].pts[j2], R[a + 1].pts[j2], R[a + 1].pts[j]];
+          const mid = [0, 1, 2].map(k => (q[0][k] + q[1][k] + q[2][k] + q[3][k]) / 4);
+          const ax = [0, 1, 2].map(k => (R[a].ctr[k] + R[a + 1].ctr[k]) / 2);
+          let n = normalize(cross(sub(q[1], q[0]), sub(q[2], q[0])));
+          if (dot(n, sub(mid, ax)) > 0) { q = [q[3], q[2], q[1], q[0]]; n = [-n[0], -n[1], -n[2]]; }
+          const v = Math.sin((j + 0.5) / sides * 6.2832);
+          const k = 0.34 + Math.max(0, -dot(n, LIGHT_DIR)) * 0.78;
+          list.push({ type: 'poly', pts: q, fill: shadeColor(colorFn(a, j, v), k), stroke, key, uid, label: (label && a === 0 && j === 1) ? label : null });
+        }
+      }
+      const skinOf = (i, v) => PATTERNS[state.pattern].skin(i, v);
+
+      function hash(i, j, k) {
+        let h = Math.imul(i, 374761393) ^ Math.imul(j, 668265263) ^ Math.imul(k, 1274126177);
+        h = Math.imul(h ^ (h >>> 13), 1103515245);
+        return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+      }
+
+      function sceneryAt(ix, iz) {
+        if (hash(ix, iz, 1) > 0.6) return null;
+        const C = 3, forest = state.env === 'forest';
+        const x = (ix + (hash(ix, iz, 2) - 0.5) * 0.8) * C, z = (iz + (hash(ix, iz, 3) - 0.5) * 0.8) * C;
+        if (Math.abs(x) < 1.6 && z > -1.5 && z < 16) return null;
+        const s = 0.7 + hash(ix, iz, 4) * 0.8, h = hash(ix, iz, 5);
+        let type, r;
+        if (forest) { type = h < 0.5 ? 'pine' : h < 0.65 ? 'rock' : h < 0.88 ? 'bush' : 'log'; r = { pine: 0.11, rock: 0.3, bush: 0.28, log: 0.3 }[type] * s; }
+        else { type = h < 0.3 ? 'cactus' : h < 0.55 ? 'rock' : h < 0.8 ? 'shrub' : 'dune'; r = { cactus: 0.14, rock: 0.3, shrub: 0.2, dune: 0 }[type] * s; }
+        return { x, z, s, h, type, r, yaw: hash(ix, iz, 6) * 6.28, uid: 'sc-' + ix + '_' + iz };
+      }
+
+      function buildScenery(list) {
+        const st = 'rgba(2,6,23,0.25)', up = -Math.PI / 2;
+        const cx = Math.round(snake.hx / 3), cz = Math.round(snake.hz / 3);
+        for (let a = -3; a <= 3; a++) for (let b = -3; b <= 3; b++) {
+          const o = sceneryAt(cx + a, cz + b);
+          if (!o) continue;
+          const { x, z, s, h, yaw, uid } = o, K = (m, c) => (r, j) => c.map(v => v * (j % 2 ? 1 : 0.86) * m);
+          if (o.type === 'pine') {
+            addTube(list, [x, 0, z], 0, up, [{ z: 0, rx: 0.09 * s, ry: 0.09 * s }, { z: 0.5 * s, rx: 0.07 * s, ry: 0.07 * s }], 6, () => [92, 64, 40], st, 'scenery', uid);
+            [[0.3, 0.6, 1.2, 0.8], [0.8, 0.46, 1.65, 0.9], [1.25, 0.32, 2.05, 1]].forEach(t => addTube(list, [x, 0, z], 0, up, [{ z: t[0] * s, rx: t[1] * s, ry: t[1] * s }, { z: t[2] * s, rx: 0.02, ry: 0.02 }], 6, K(t[3], [28 + h * 30, 88 + h * 50, 50 + h * 20]), st, 'scenery', uid));
+          } else if (o.type === 'bush') {
+            addTube(list, [x, 0, z], 0, up, [{ z: 0, rx: 0.2 * s, ry: 0.2 * s }, { z: 0.12 * s, rx: 0.34 * s, ry: 0.34 * s }, { z: 0.3 * s, rx: 0.26 * s, ry: 0.26 * s }, { z: 0.4 * s, rx: 0.08 * s, ry: 0.08 * s }], 6, K(1, [50 + h * 30, 120 + h * 40, 55]), st, 'scenery', uid);
+          } else if (o.type === 'log') {
+            addTube(list, [x, 0.13 * s, z], yaw, 0, [{ z: -0.45 * s, rx: 0.11 * s, ry: 0.11 * s }, { z: 0, rx: 0.14 * s, ry: 0.14 * s }, { z: 0.45 * s, rx: 0.11 * s, ry: 0.11 * s }], 6, K(1, [92, 62, 40]), st, 'scenery', uid);
+          } else if (o.type === 'cactus') {
+            addTube(list, [x, 0, z], 0, up, [{ z: 0, rx: 0.1 * s, ry: 0.1 * s }, { z: 0.12 * s, rx: 0.14 * s, ry: 0.14 * s }, { z: 0.9 * s, rx: 0.14 * s, ry: 0.14 * s }, { z: 1.05 * s, rx: 0.05 * s, ry: 0.05 * s }], 8, (r, j) => j % 2 ? [70, 150, 90] : [58, 128, 76], st, 'scenery', uid);
+          } else if (o.type === 'shrub') {
+            addTube(list, [x, 0, z], 0, up, [{ z: 0, rx: 0.16 * s, ry: 0.16 * s }, { z: 0.1 * s, rx: 0.26 * s, ry: 0.26 * s }, { z: 0.24 * s, rx: 0.06 * s, ry: 0.06 * s }], 6, K(1, [150, 128, 72]), st, 'scenery', uid);
+          } else if (o.type === 'dune') {
+            addTube(list, [x, -0.02, z], yaw, 0, [{ z: -1.3 * s, rx: 0.2, ry: 0.03 }, { z: -0.5 * s, rx: 0.9 * s, ry: 0.12 * s }, { z: 0.5 * s, rx: 0.9 * s, ry: 0.12 * s }, { z: 1.3 * s, rx: 0.2, ry: 0.03 }], 8, (r, j, v) => v > 0.4 ? [238, 202, 146] : [206, 166, 108], st, 'scenery', uid);
+          } else {
+            addTube(list, [x, 0.1 * s, z], yaw, 0, [{ z: -0.28 * s, rx: 0.12 * s, ry: 0.1 * s }, { z: -0.1 * s, rx: 0.3 * s, ry: 0.22 * s }, { z: 0.12 * s, rx: 0.28 * s, ry: 0.2 * s }, { z: 0.28 * s, rx: 0.1 * s, ry: 0.08 * s }], 6, K(1, [112, 116, 122]), st, 'scenery', uid);
+          }
+        }
+      }
+
+      // Colisión del cabezal (círculo r=0.22) con árboles/rocas o con las losas de la arena
+      function collide(x, z) {
+        let px = 0, pz = 0, hit = false;
+        const R = 0.22;
+        const circ = (cx, cz, r) => {
+          const dx = x - cx, dz = z - cz, d = Math.hypot(dx, dz), m = r + R;
+          if (d < m && d > 1e-6) { const k = (m - d) / d; px += dx * k; pz += dz * k; hit = true; }
+        };
+        if (state.env === 'arena') {
+          GATES.forEach(g => [-1, 1].forEach(sg => {
+            const hw = g.gap / 2, x0 = sg > 0 ? hw : -hw - 1.6, x1 = sg > 0 ? hw + 1.6 : -hw;
+            circ(clamp(x, x0, x1), clamp(z, g.z - 0.26, g.z + 0.26), 0);
+          }));
+        } else if (state.env === 'forest' || state.env === 'desert') {
+          const cx = Math.round(x / 3), cz = Math.round(z / 3);
+          for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+            const o = sceneryAt(cx + a, cz + b);
+            if (o && o.r > 0) circ(o.x, o.z, o.r);
+          }
+        }
+        return hit ? { dx: px, dz: pz } : null;
+      }
+
+      // =========================================================================
+      // 4. LOCOMOCIÓN SERPENTINA (seguir al líder)
+      // =========================================================================
+      function wave() {
+        const phi = state.phaseRad;
+        const k = phi / STEP;
+        const thetaMax = state.amplitudeDeg * Math.PI / 180;
+        const alpha = Math.min(1.05, thetaMax / (2 * Math.sin(phi / 2)));
+        const latAmp = Math.min(0.85, alpha / k);
+        const lambda = 2 * Math.PI / k;
+        const v = state.frequencyHz * lambda * 0.08;
+        snake.k = k;
+        return { k, latAmp, lambda, v };
+      }
+
+      function gateFactor(z, latAmp) {
+        let f = 1;
+        for (let i = 0; i < GATES.length; i++) {
+          const g = GATES[i];
+          const dz = Math.abs(z - g.z);
+          const allowed = Math.max(0.03, g.gap * 0.5 - 0.23);
+          const target = clamp(allowed / latAmp, 0.06, 1);
+          const t = smooth(1 - (dz - 0.6) / 1.0);
+          f = Math.min(f, 1 + (target - 1) * t);
+        }
+        return f;
+      }
+
+      function shiftAll(dx, dz) {
+        for (let i = 0; i < snake.trail.length; i++) { snake.trail[i].x += dx; snake.trail[i].z += dz; }
+        snake.bx += dx; snake.bz += dz; snake.hx += dx; snake.hz += dz;
+      }
+
+      function stepPath(db, W) {
+        snake.bd += db;
+        if (state.mode === 'manual') {
+          snake.base += (state.manualYawDeg * Math.PI / 180) * 1.2 * db;
+        } else {
+          snake.base -= snake.base * Math.min(0.5, 0.35 * db);
+        }
+        if (state.env === 'arena' && state.mode !== 'manual') {
+          snake.bx -= snake.bx * Math.min(1, 2 * db);
+        }
+        const fx = -Math.sin(snake.base), fz = -Math.cos(snake.base);
+        snake.bx += fx * db; snake.bz += fz * db;
+
+        const A = W.latAmp * (state.env === 'arena' ? gateFactor(snake.bz, W.latAmp) : 1);
+        const lat = A * Math.sin(W.k * snake.bd);
+        let x = snake.bx + fz * lat;
+        let z = snake.bz - fx * lat;
+        const hc = collide(x, z);
+        if (hc) {
+          snake.bx += hc.dx; snake.bz += hc.dz; x += hc.dx; z += hc.dz;
+          snake.base += clamp((fz * hc.dx - fx * hc.dz) * 3, -0.25, 0.25);
+          state.hitT = 0.4;
+        }
+
+        const dx = x - snake.hx, dz = z - snake.hz;
+        const ds = Math.hypot(dx, dz);
+        if (ds > 1e-6) snake.heading = Math.atan2(-dx, -dz);
+        snake.s += ds; snake.hx = x; snake.hz = z;
+        snake.trail.push({ x, z, s: snake.s });
+
+        const keep = MAX_SEG * STEP + 1.5;
+        while (snake.trail.length > 2 && snake.trail[1].s < snake.s - keep) snake.trail.shift();
+
+        if (state.env === 'arena' && snake.hz < -4.7) shiftAll(0, 8.6);
+      }
+
+      function resetSnake(hx, hz) {
+        const W = wave();
+        const L = MAX_SEG * STEP + 1.5;
+        snake.trail.length = 0;
+        snake.bd = 0; snake.base = 0; snake.s = 0; snake.heading = 0;
+        snake.bx = hx; snake.bz = hz + L; snake.hx = hx; snake.hz = hz + L;
+        snake.trail.push({ x: snake.hx, z: snake.hz, s: 0 });
+        const savedMode = state.mode;
+        state.mode = 'wave';
+        for (let d = 0; d < L; d += 0.03) stepPath(0.03, W);
+        state.mode = savedMode;
+      }
+
+      function advance(dt) {
+        const W = wave();
+        const th = state.mode === 'manual' ? state.throttle : 1;
+        state.speedCmS = W.v * CM_PER_UNIT * th;
+        let remaining = W.v * dt * th;
+        while (remaining > 1e-6) {
+          const db = Math.min(remaining, 0.03);
+          stepPath(db, W);
+          remaining -= db;
+        }
+        state.distanceM += W.v * dt * th * CM_PER_UNIT / 100;
+      }
+
+      function buildBody(n) {
+        const tr = snake.trail;
+        const out = [];
+        let idx = tr.length - 1;
+        let nextP = { x: snake.hx, z: snake.hz, s: snake.s };
+        for (let i = 0; i < n; i++) {
+          const target = snake.s - i * STEP;
+          while (idx > 0 && tr[idx].s > target) { nextP = tr[idx]; idx--; }
+          const a = tr[idx], b = nextP;
+          const span = b.s - a.s;
+          const t = span > 1e-9 ? clamp((target - a.s) / span, 0, 1) : 0;
+          out.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, yaw: 0 });
+        }
+        for (let i = 0; i < n; i++) {
+          if (i === 0) { out[0].yaw = snake.heading; continue; }
+          const p = out[i - 1];
+          const q = i < n - 1 ? out[i + 1] : out[i];
+          out[i].yaw = Math.atan2(-(p.x - q.x), -(p.z - q.z));
+        }
+        return out;
+      }
+
+      function taper(i, n) { return 1 - 0.22 * (i / Math.max(1, n - 1)); }
+
+      function palette() {
+        return {
+          main: [46, 53, 66], dark: [28, 33, 42],
+          accent: PATTERNS[state.pattern].accent,
+          servo: [37, 99, 235], metal: [120, 132, 148]
+        };
+      }
+
+      // =========================================================================
+      // 5. CONSTRUCCIÓN DE ESCENAS
+      // =========================================================================
+      function buildArena(list) {
+        const concrete = [108, 118, 132];
+        GATES.forEach((g, gi) => {
+          const wallW = 1.6;
+          const offset = g.gap * 0.5 + wallW * 0.5;
+          addBoxFaces(list, [-offset, 0.32, g.z], [wallW, 0.64, 0.52], 0, 0, concrete, 'rgba(30,41,59,0.7)', 'wall', g.label, 'wall-' + gi + 'a');
+          addBoxFaces(list, [offset, 0.32, g.z], [wallW, 0.64, 0.52], 0, 0, concrete, 'rgba(30,41,59,0.7)', 'wall', null, 'wall-' + gi + 'b');
+        });
+        addBoxFaces(list, [0, 0.25, -5.2], [0.55, 0.5, 0.42], 0, 0, [30, 41, 59], '#f97316', 'speaker', 'AUDIO', 'speaker-0');
+      }
+
+      function buildSimSnake(list, body, shadows) {
+        const n = body.length;
+        const P = palette();
+        const segs = body.map((b, i) => ({
+          pos: [b.x, i === 0 ? 0.24 : 0.22, b.z],
+          yaw: b.yaw,
+          pitch: i === 0 ? 0.08 + Math.sin(2 * snake.k * snake.bd) * 0.03 : 0
+        }));
+        segs.forEach(s => shadows.push(s));
+
+        for (let i = 0; i < n; i++) {
+          const s = segs[i];
+          const sc = taper(i, n);
+          const lbl = String(i + 1).padStart(2, '0');
+          if (i === 0) {
+            addTube(list, s.pos, s.yaw, s.pitch, [{ z: -0.30, rx: 0.09, ry: 0.07 }, { z: -0.22, rx: 0.17, ry: 0.13 }, { z: -0.05, rx: 0.21, ry: 0.17 }, { z: 0.12, rx: 0.2, ry: 0.16 }, { z: 0.24, rx: 0.15, ry: 0.12 }], 10, (r, j, v) => skinOf(0, v), 'rgba(15,23,42,0.35)', 'head', 'head-0', lbl);
+            addBoxFaces(list, transformPoint([0, 0.17, -0.06], s.pos, s.yaw, s.pitch), [0.30, 0.05, 0.34], s.yaw, s.pitch, P.accent, 'rgba(15,23,42,0.8)', 'visor', null, 'visor-0');
+            addBoxFaces(list, transformPoint([0, 0.02, -0.25], s.pos, s.yaw, s.pitch), [0.22, 0.2, 0.08], s.yaw, s.pitch, P.dark, '#38bdf8', 'camera', null, 'camera-0');
+            addBoxFaces(list, transformPoint([-0.25, 0.04, -0.14], s.pos, s.yaw, s.pitch), [0.09, 0.09, 0.24], s.yaw, s.pitch, [20, 24, 32], 'rgba(100,116,139,0.6)', 'mic', null, 'mic-0');
+            [-1, 1].forEach(sg => addTube(list, transformPoint([sg * 0.17, 0.08, -0.2], s.pos, s.yaw, s.pitch), s.yaw + sg * Math.PI / 2, s.pitch,
+              [{ z: -0.03, rx: 0.045, ry: 0.045 }, { z: 0, rx: 0.05, ry: 0.05 }, { z: 0.03, rx: 0.02, ry: 0.02 }], 6, (r) => r === 1 ? [10, 10, 12] : [240, 180, 40], 'rgba(15,23,42,0.3)', 'head', 'head-0'));
+          } else {
+            addTube(list, s.pos, s.yaw, 0, [{ z: -0.25, rx: 0.14 * sc, ry: 0.11 }, { z: 0, rx: 0.19 * sc, ry: 0.15 }, { z: 0.25, rx: 0.14 * sc, ry: 0.11 }], 8, (r, j, v) => skinOf(i, v), 'rgba(15,23,42,0.35)', 'segment', 'segment-' + i, lbl);
+            
+          }
+          if (i === n - 1) {
+            addBoxFaces(list, transformPoint([0, -0.02, 0.23], s.pos, s.yaw, 0), [0.28 * sc, 0.2, 0.1], s.yaw, 0, P.dark, P.accent ? 'rgba(249,115,22,0.8)' : null, 'tail', null, 'tail-' + i);
+          }
+          if (i < n - 1) {
+            const nx = segs[i + 1];
+            const jc = [(s.pos[0] + nx.pos[0]) * 0.5, 0.21, (s.pos[2] + nx.pos[2]) * 0.5];
+            const jy = Math.atan2(-(s.pos[0] - nx.pos[0]), -(s.pos[2] - nx.pos[2]));
+            const jsc = taper(i, n);
+            addTube(list, jc, jy, 0, [{ z: -0.12, rx: 0.08 * jsc, ry: 0.08 }, { z: 0, rx: 0.10 * jsc, ry: 0.1 }, { z: 0.12, rx: 0.08 * jsc, ry: 0.08 }], 6, () => P.metal, 'rgba(15,23,42,0.4)', 'joint', 'joint-' + i);
+            addTube(list, [jc[0], jc[1] + 0.06, jc[2]], jy, 0, [{ z: -0.05, rx: 0.075 * jsc, ry: 0.09 }, { z: 0.05, rx: 0.075 * jsc, ry: 0.09 }], 6, () => P.servo, '#93c5fd', 'servo', 'servo-' + i);
+            list.push({
+              type: 'cable',
+              pStart: transformPoint([0.16 * jsc, 0.04, 0.14], s.pos, s.yaw, 0),
+              pMid: transformPoint([0.24 * jsc, 0.14, 0], jc, jy, 0),
+              pEnd: transformPoint([0.16 * jsc, 0.04, -0.14], nx.pos, nx.yaw, 0),
+              key: 'cable', uid: 'cable-' + i
+            });
+          }
+        }
+        return segs;
+      }
+
+      const CALLOUTS = { 'camera-0': 'Cámara RT', 'esp32-2': 'ESP32', 'pca-2': 'PCA9685', 'battery-4': 'LiPo 2S', 'buck-4': 'Buck 6 V', 'servo-0': 'Servo MG90S', 'frame-1': 'Costilla + bus', 'mic-0': 'Micrófono', 'led-0': 'LED' };
+
+      function buildAnatomy(list, e, n) {
+        const P = palette();
+        const sp = STEP * (1 + 0.95 * e);
+        const zOf = (i) => (i - (n - 1) / 2) * sp;
+        const y0 = 0.22, stroke = 'rgba(15,23,42,0.45)', up = -Math.PI / 2;
+        const add = (c, size, rgb, st, key, uid, label) => addBoxFaces(list, c, size, 0, 0, rgb, st || stroke, key, label || null, uid);
+        const T = (c, rings, sides, cf, key, uid, label, pitch) => addTube(list, c, 0, pitch || 0, rings, sides, cf, stroke, key, uid, label);
+        const flat = (rgb) => () => rgb;
+        const prof = (sc, ry) => [{ z: -0.18, rx: 0.14 * sc, ry: ry * 0.55 }, { z: 0, rx: 0.19 * sc, ry }, { z: 0.18, rx: 0.14 * sc, ry: ry * 0.55 }];
+
+        for (let i = 0; i < n; i++) {
+          const z = zOf(i), sc = taper(i, n), lbl = String(i + 1).padStart(2, '0');
+
+          if (i === 0) {
+            const hp = (ry) => [{ z: -0.28, rx: 0.1, ry: ry * 0.6 }, { z: -0.1, rx: 0.19, ry }, { z: 0.14, rx: 0.19, ry }, { z: 0.24, rx: 0.13, ry: ry * 0.7 }];
+            T([0, y0 - 0.07, z], hp(0.08), 8, (r, j, v) => skinOf(0, v), 'head', 'head-0');
+            T([0, y0 + 0.07 + 1.0 * e, z], hp(0.1), 8, (r, j, v) => skinOf(0, v), 'head', 'head-0', lbl);
+            add([0, y0 + 0.2 + 1.45 * e, z - 0.02], [0.30, 0.05, 0.34], P.accent, null, 'visor', 'visor-0');
+            T([0, y0 + 0.02, z - 0.3 - 0.7 * e], [{ z: -0.04, rx: 0.09, ry: 0.09 }, { z: 0.04, rx: 0.1, ry: 0.1 }], 8, flat(P.dark), 'camera', 'camera-0');
+            T([0, y0 + 0.02, z - 0.36 - 0.95 * e], [{ z: -0.02, rx: 0.065, ry: 0.065 }, { z: 0.02, rx: 0.065, ry: 0.065 }], 8, flat([30, 90, 160]), 'camera', 'camera-0');
+            [-1, 1].forEach((sg, k) => T([sg * (0.14 + 0.32 * e), y0 - 0.05, z - 0.27 - 0.6 * e], [{ z: -0.02, rx: 0.04, ry: 0.04 }, { z: 0.02, rx: 0.04, ry: 0.04 }], 6, flat([240, 249, 255]), 'led', 'led-' + k));
+            T([-0.25 - 0.6 * e, y0 + 0.04, z - 0.14], [{ z: -0.12, rx: 0.035, ry: 0.035 }, { z: 0, rx: 0.055, ry: 0.055 }, { z: 0.12, rx: 0.035, ry: 0.035 }], 6, flat([40, 46, 58]), 'mic', 'mic-0');
+          } else {
+            T([0, y0 - 0.06, z], prof(sc, 0.09), 8, (r, j, v) => skinOf(i, v), 'shell', 'shell-' + i);
+            const cy = y0 + 0.09 + 1.1 * e;
+            T([0, cy, z], prof(sc, 0.09), 8, (r, j, v) => skinOf(i, v), 'cover', 'cover-' + i, lbl);
+            if (e > 0.1) [-1, 1].forEach(sg => add([sg * 0.12 * sc, cy + 0.12 + 0.35 * e, z], [0.035, 0.03, 0.035], P.metal, null, 'cover', 'cover-' + i));
+
+            if (e > 0.16) {
+              const iy = y0 + 0.07 + 0.5 * e, xl = -(0.09 + 0.30 * e), xr = 0.09 + 0.30 * e;
+              [-0.12, 0.12].forEach(dz => T([0, iy, z + dz], [{ z: -0.015, rx: 0.15 * sc, ry: 0.075 }, { z: 0.015, rx: 0.15 * sc, ry: 0.075 }], 8, flat([92, 102, 118]), 'frame', 'frame-' + i));
+              add([0, iy - 0.045, z], [0.05, 0.012, 0.3], [30, 110, 70], null, 'frame', 'frame-' + i);
+              if (i === 2) {
+                add([xl, iy, z], [0.14, 0.02, 0.26], [34, 120, 80], '#86efac', 'esp32', 'esp32-2');
+                add([xl, iy + 0.02, z + 0.03], [0.07, 0.02, 0.08], [20, 24, 32], null, 'esp32', 'esp32-2');
+                add([xl, iy + 0.012, z - 0.115], [0.1, 0.012, 0.04], [212, 175, 55], null, 'esp32', 'esp32-2');
+                add([xr, iy, z], [0.14, 0.02, 0.26], [109, 40, 217], '#c4b5fd', 'pca', 'pca-2');
+                add([xr, iy + 0.025, z + 0.05], [0.12, 0.03, 0.04], [15, 15, 20], null, 'pca', 'pca-2');
+                add([xr, iy + 0.03, z - 0.09], [0.1, 0.04, 0.05], [37, 99, 235], null, 'pca', 'pca-2');
+              }
+              if (i === 4) {
+                add([0, iy, z], [0.26 * sc, 0.10, 0.24], [202, 138, 4], '#fde68a', 'battery', 'battery-4');
+                add([0, iy + 0.052, z], [0.2 * sc, 0.006, 0.14], [30, 30, 36], null, 'battery', 'battery-4');
+                add([0.08 * sc, iy, z - 0.14], [0.02, 0.02, 0.06], [220, 38, 38], null, 'battery', 'battery-4');
+                add([-0.08 * sc, iy, z - 0.14], [0.02, 0.02, 0.06], [15, 15, 20], null, 'battery', 'battery-4');
+                add([xr, iy - 0.02, z], [0.11, 0.03, 0.14], [13, 148, 136], '#5eead4', 'buck', 'buck-4');
+                T([xr, iy + 0.025, z], [{ z: 0, rx: 0.03, ry: 0.03 }, { z: 0.03, rx: 0.03, ry: 0.03 }], 6, flat([160, 170, 180]), 'buck', 'buck-4', null, up);
+              }
+            }
+          }
+
+          if (i === n - 1) {
+            T([0, y0 - 0.02, z + 0.23 + 0.55 * e], [{ z: -0.06, rx: 0.14 * sc, ry: 0.1 }, { z: 0.06, rx: 0.06 * sc, ry: 0.04 }], 8, flat(P.dark), 'tail', 'tail-' + i);
+          }
+
+          if (i < n - 1) {
+            const zn = zOf(i + 1), zc = (z + zn) / 2, jsc = taper(i, n), sy = 0.28 + 0.85 * e;
+            T([0, 0.21 + 0.2 * e, zc], [{ z: -0.11, rx: 0.07 * jsc, ry: 0.07 * jsc }, { z: -0.08, rx: 0.1 * jsc, ry: 0.1 * jsc }, { z: 0.08, rx: 0.1 * jsc, ry: 0.1 * jsc }, { z: 0.11, rx: 0.07 * jsc, ry: 0.07 * jsc }], 6, flat(P.metal), 'joint', 'joint-' + i, null, up);
+            add([0, sy, zc], [0.13 * jsc, 0.12, 0.2], [30, 64, 175], '#93c5fd', 'servo', 'servo-' + i);
+            add([0, sy + 0.03, zc], [0.13 * jsc, 0.018, 0.3], P.metal, null, 'servo', 'servo-' + i);
+            T([0, sy + 0.075, zc + 0.05], [{ z: 0, rx: 0.05, ry: 0.05 }, { z: 0.025, rx: 0.05, ry: 0.05 }], 6, flat([235, 238, 245]), 'servo', 'servo-' + i, null, up);
+            const halfA = i === 0 ? 0.24 : 0.18;
+            list.push({
+              type: 'cable',
+              pStart: [0.16 * jsc, 0.14, z + halfA],
+              pMid: [0.28 + 0.5 * e, 0.12, zc],
+              pEnd: [0.16 * jsc, 0.14, zn - 0.18],
+              key: 'cable', uid: 'cable-' + i
+            });
+          }
+        }
+      }
+
+      // =========================================================================
+      // 6. RENDER
+      // =========================================================================
+      let hitPolys = [];
+      let hitCircles = [];
+
+      function updateCameraTarget() {
+        let fx = 0, fz = 0, a = 1;
+        if (state.view === 'sim') {
+          if (state.env !== 'arena') { fx = snake.cx; fz = snake.cz; a = 0.18; }
+          else { fx = 0; fz = -0.6; }
+        }
+        let dh = snake.heading - (cam.povYaw || 0); dh = Math.atan2(Math.sin(dh), Math.cos(dh)); cam.povYaw = (cam.povYaw || 0) + dh * 0.12;
+        if (Math.hypot(fx - cam.fx, fz - cam.fz) > 3) a = 1;
+        cam.fx += (fx - cam.fx) * a;
+        cam.fz += (fz - cam.fz) * a;
+        cam.targetX = cam.fx + cam.panX;
+        cam.targetZ = cam.fz + cam.panZ;
+      }
+
+      function renderScene() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = window.innerWidth, h = window.innerHeight;
+        if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+          canvas.width = Math.round(w * dpr);
+          canvas.height = Math.round(h * dpr);
+          canvas.style.width = w + 'px';
+          canvas.style.height = h + 'px';
+        }
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        cam.fov = Math.min(w, h) * (state.pov ? 0.85 : 1.18);
+
+        const bg = ctx.createRadialGradient(w * 0.5, h * 0.42, 30, w * 0.5, h * 0.5, Math.max(w, h) * 0.8);
+        const SCN = SCENES[state.env] || SCENES.studio;
+        bg.addColorStop(0, SCN.bg[0]);
+        bg.addColorStop(0.65, SCN.bg[1]);
+        bg.addColorStop(1, SCN.bg[2]);
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+        if (state.env === 'photo' && state.bgImg) {
+          const im = state.bgImg, k = Math.max(w / im.width, h / im.height);
+          ctx.drawImage(im, (w - im.width * k) / 2, (h - im.height * k) / 2, im.width * k, im.height * k);
+          ctx.fillStyle = 'rgba(7,12,23,0.35)'; ctx.fillRect(0, 0, w, h);
+        }
+        if (SCN.sky) {
+          const hz = clamp(h / 2 - cam.fov * Math.tan(state.pov ? 0.12 : cam.pitch), 0, h);
+          const sg = ctx.createLinearGradient(0, 0, 0, Math.max(hz, 1)); sg.addColorStop(0, SCN.sky[0]); sg.addColorStop(1, SCN.sky[1]);
+          ctx.fillStyle = sg; ctx.fillRect(0, 0, w, hz);
+          const gg = ctx.createLinearGradient(0, hz, 0, h); gg.addColorStop(0, SCN.ground[0]); gg.addColorStop(1, SCN.ground[1]);
+          ctx.fillStyle = gg; ctx.fillRect(0, hz, w, h - hz);
+        }
+        const fogA = (z) => (state.env === 'forest' || state.env === 'desert') ? clamp(1 - (z - 7) / 9, 0.12, 1) : 1;
+
+        updateCameraTarget();
+        const basis = getCameraBasis();
+
+        // Cuadrícula infinita centrada en la cámara
+        const gStep = 0.6, R = 6.6;
+        const ix0 = Math.floor((cam.targetX - R) / gStep), ix1 = Math.ceil((cam.targetX + R) / gStep);
+        const iz0 = Math.floor((cam.targetZ - R) / gStep), iz1 = Math.ceil((cam.targetZ + R) / gStep);
+        ctx.lineWidth = 1;
+        for (let ix = ix0; ix <= ix1; ix++) {
+          const gx = ix * gStep;
+          const pA = projectPoint([gx, 0, iz0 * gStep], basis, w, h);
+          const pB = projectPoint([gx, 0, iz1 * gStep], basis, w, h);
+          if (pA && pB) {
+            ctx.strokeStyle = ix === 0 ? 'rgba(56,189,248,0.32)' : SCN.grid;
+            ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB.x, pB.y); ctx.stroke();
+          }
+        }
+        for (let iz = iz0; iz <= iz1; iz++) {
+          const gz = iz * gStep;
+          const pA = projectPoint([ix0 * gStep, 0, gz], basis, w, h);
+          const pB = projectPoint([ix1 * gStep, 0, gz], basis, w, h);
+          if (pA && pB) {
+            ctx.strokeStyle = iz === 0 ? 'rgba(249,115,22,0.30)' : SCN.grid;
+            ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB.x, pB.y); ctx.stroke();
+          }
+        }
+
+        const list = [];
+        let segsForFx = null;
+
+        if (state.view === 'sim') {
+          if (state.env === 'arena') {
+            buildArena(list);
+            const sc = projectPoint([0, 0.28, -4.96], basis, w, h);
+            if (sc) {
+              const pulse = (performance.now() * 0.003) % 1;
+              ctx.strokeStyle = `rgba(249,115,22,${1 - pulse})`;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.arc(sc.x, sc.y, (0.12 + pulse * 0.45) * sc.scale, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          }
+          const body = buildBody(state.numSegments);
+          let sx = 0, sz = 0;
+          body.forEach(b => { sx += b.x; sz += b.z; });
+          snake.cx = sx / body.length; snake.cz = sz / body.length;
+
+          if (state.env === 'forest' || state.env === 'desert') buildScenery(list);
+          const shadows = [];
+          segsForFx = buildSimSnake(list, body, shadows);
+          shadows.forEach(s => {
+            const sp = projectPoint([s.pos[0], 0.005, s.pos[2]], basis, w, h);
+            if (sp) {
+              const rx = 0.25 * sp.scale;
+              ctx.fillStyle = 'rgba(2,6,23,0.55)';
+              ctx.beginPath();
+              ctx.ellipse(sp.x, sp.y, rx, rx * Math.max(0.35, Math.sin(cam.pitch)) * 0.8, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          });
+        } else {
+          buildAnatomy(list, state.explode, state.numSegments);
+        }
+
+        // Proyección + ordenamiento por profundidad
+        const items = [];
+        for (let i = 0; i < list.length; i++) {
+          const it = list[i];
+          if (it.type === 'poly') {
+            const pp = [];
+            let sumZ = 0, ok = true;
+            for (let k = 0; k < 4; k++) {
+              const pr = projectPoint(it.pts[k], basis, w, h);
+              if (!pr) { ok = false; break; }
+              pp.push(pr); sumZ += pr.z;
+            }
+            if (!ok) continue;
+            const c2 = (pp[1].x - pp[0].x) * (pp[2].y - pp[0].y) - (pp[1].y - pp[0].y) * (pp[2].x - pp[0].x);
+            if (c2 <= 0) continue;
+            items.push({ type: 'poly', pp, fill: it.fill, stroke: it.stroke, key: it.key, uid: it.uid, label: it.label, z: sumZ / 4 });
+          } else {
+            const p0 = projectPoint(it.pStart, basis, w, h);
+            const p1 = projectPoint(it.pMid, basis, w, h);
+            const p2 = projectPoint(it.pEnd, basis, w, h);
+            if (p0 && p1 && p2) items.push({ type: 'cable', p0, p1, p2, key: it.key, uid: it.uid, z: (p0.z + p1.z + p2.z) / 3 });
+          }
+        }
+        items.sort((a, b) => b.z - a.z);
+
+        hitPolys = [];
+        hitCircles = [];
+        let selX = 0, selY = 0, selN = 0, selKey = null;
+        const anchors = {};
+
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          const selected = it.uid === state.selectedUid;
+          ctx.globalAlpha = fogA(it.z);
+          if (it.type === 'poly') {
+            ctx.beginPath();
+            ctx.moveTo(it.pp[0].x, it.pp[0].y);
+            for (let k = 1; k < 4; k++) ctx.lineTo(it.pp[k].x, it.pp[k].y);
+            ctx.closePath();
+            ctx.fillStyle = it.fill;
+            ctx.fill();
+            if (selected) {
+              ctx.fillStyle = 'rgba(251,191,36,0.30)';
+              ctx.fill();
+              ctx.strokeStyle = '#fbbf24';
+              ctx.lineWidth = 2.2;
+              ctx.stroke();
+            } else if (it.stroke) {
+              ctx.strokeStyle = it.stroke;
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+            const cx = (it.pp[0].x + it.pp[1].x + it.pp[2].x + it.pp[3].x) * 0.25;
+            const cy = (it.pp[0].y + it.pp[1].y + it.pp[2].y + it.pp[3].y) * 0.25;
+            if (state.view === 'anat' && CALLOUTS[it.uid]) { const an = anchors[it.uid] || (anchors[it.uid] = { x: 0, y: 0, n: 0 }); an.x += cx; an.y += cy; an.n++; }
+            hitPolys.push({ pts: it.pp, key: it.key, uid: it.uid });
+            if (selected) { selX += cx; selY += cy; selN++; selKey = it.key; }
+            if (it.label) {
+              ctx.fillStyle = '#f8fafc';
+              ctx.font = '700 10px ui-monospace, monospace';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(it.label, cx, cy);
+            }
+          } else {
+            ctx.strokeStyle = selected ? '#fbbf24' : '#f97316';
+            ctx.lineWidth = Math.max(selected ? 2.5 : 1.5, 0.025 * it.p1.scale);
+            ctx.beginPath();
+            ctx.moveTo(it.p0.x, it.p0.y);
+            ctx.quadraticCurveTo(it.p1.x, it.p1.y, it.p2.x, it.p2.y);
+            ctx.stroke();
+            hitCircles.push({
+              x: 0.25 * it.p0.x + 0.5 * it.p1.x + 0.25 * it.p2.x,
+              y: 0.25 * it.p0.y + 0.5 * it.p1.y + 0.25 * it.p2.y,
+              r: 11, key: it.key, uid: it.uid
+            });
+            if (selected) { selX += it.p1.x; selY += it.p1.y; selN++; selKey = it.key; }
+          }
+        }
+
+        ctx.globalAlpha = 1;
+        // Luces del cabezal (solo simulador)
+        if (segsForFx) {
+          const head = segsForFx[0];
+          const lensW = transformPoint([0, 0.02, -0.30], head.pos, head.yaw, head.pitch);
+          const ledL = transformPoint([-0.14, -0.05, -0.26], head.pos, head.yaw, head.pitch);
+          const ledR = transformPoint([0.14, -0.05, -0.26], head.pos, head.yaw, head.pitch);
+          const beamW = transformPoint([0, -0.18, -1.65], head.pos, head.yaw, head.pitch);
+          const lensP = projectPoint(lensW, basis, w, h);
+          const ledLP = projectPoint(ledL, basis, w, h);
+          const ledRP = projectPoint(ledR, basis, w, h);
+          const beamP = projectPoint(beamW, basis, w, h);
+
+          if (lensP && beamP) {
+            const g = ctx.createLinearGradient(lensP.x, lensP.y, beamP.x, beamP.y);
+            g.addColorStop(0, 'rgba(224,242,254,0.34)');
+            g.addColorStop(1, 'rgba(224,242,254,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(lensP.x - 0.14 * lensP.scale, lensP.y);
+            ctx.lineTo(lensP.x + 0.14 * lensP.scale, lensP.y);
+            ctx.lineTo(beamP.x + 0.52 * beamP.scale, beamP.y);
+            ctx.lineTo(beamP.x - 0.52 * beamP.scale, beamP.y);
+            ctx.closePath();
+            ctx.fill();
+          }
+          // Lente y LEDs solo si el frente del cabezal mira hacia la cámara
+          const fwd = [-Math.sin(head.yaw), 0, -Math.cos(head.yaw)];
+          const facing = dot(fwd, sub(basis.eye, lensW)) > 0;
+          if (facing && lensP) {
+            const r = Math.max(3, 0.065 * lensP.scale);
+            ctx.fillStyle = '#020617';
+            ctx.beginPath(); ctx.arc(lensP.x, lensP.y, r, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.5; ctx.stroke();
+            ctx.fillStyle = '#7dd3fc';
+            ctx.beginPath(); ctx.arc(lensP.x - r * 0.3, lensP.y - r * 0.3, r * 0.28, 0, Math.PI * 2); ctx.fill();
+          }
+          if (facing) {
+            [ledLP, ledRP].forEach(lp => {
+              if (!lp) return;
+              ctx.fillStyle = '#ffffff';
+              ctx.shadowColor = '#e0f2fe';
+              ctx.shadowBlur = 12;
+              ctx.beginPath(); ctx.arc(lp.x, lp.y, Math.max(2.5, 0.036 * lp.scale), 0, Math.PI * 2); ctx.fill();
+              ctx.shadowBlur = 0;
+            });
+          }
+        }
+
+        if (state.view === 'anat' && state.explode > 0.55) {
+          let k = 0;
+          for (const u in anchors) {
+            const an = anchors[u], x = an.x / an.n, y = an.y / an.n, side = k % 2 ? 1 : -1, txt = CALLOUTS[u], ly = y - 36 - (k % 3) * 16;
+            k++;
+            ctx.font = '600 10px system-ui, sans-serif';
+            const tw = ctx.measureText(txt).width + 12, bx = clamp(x + side * 34 - tw / 2, 4, w - tw - 4), by = clamp(ly - 9, 70, h - 30);
+            ctx.strokeStyle = 'rgba(251,191,36,0.8)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(bx + tw / 2, by + 18); ctx.stroke();
+            ctx.fillStyle = 'rgba(15,23,42,0.92)';
+            ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(bx, by, tw, 18, 6); else ctx.rect(bx, by, tw, 18);
+            ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#fde68a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, bx + tw / 2, by + 9);
+          }
+        }
+        // Etiqueta de la pieza seleccionada
+        if (selN > 0 && selKey && PART_INFO[selKey]) {
+          const text = PART_INFO[selKey].title;
+          const px = selX / selN, py = selY / selN - 26;
+          ctx.font = '700 11px system-ui, sans-serif';
+          const tw = ctx.measureText(text).width + 16;
+          const bx = clamp(px - tw / 2, 6, w - tw - 6);
+          const by = clamp(py - 11, 6, h - 30);
+          ctx.fillStyle = 'rgba(15,23,42,0.92)';
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bx, by, tw, 22, 8); else ctx.rect(bx, by, tw, 22);
+          ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#fde68a';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, bx + tw / 2, by + 11.5);
+        }
+
+        if ((state.hitT || 0) > 0 && state.view === 'sim') {
+          ctx.fillStyle = `rgba(239,68,68,${state.hitT * 0.55})`; ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = '#fecaca'; ctx.font = '800 13px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('⚠ COLISIÓN', w / 2, 118);
+        }
+        if (state.pov && state.view === 'sim') {
+          const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.max(w, h) * 0.75);
+          vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.75)');
+          ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+          ctx.strokeStyle = 'rgba(125,211,252,0.7)'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(w / 2 - 14, h / 2); ctx.lineTo(w / 2 + 14, h / 2); ctx.moveTo(w / 2, h / 2 - 14); ctx.lineTo(w / 2, h / 2 + 14); ctx.stroke();
+          ctx.fillStyle = (performance.now() % 1200 < 700) ? '#ef4444' : 'rgba(239,68,68,0.25)';
+          ctx.beginPath(); ctx.arc(24, 104, 5, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#e2e8f0'; ctx.font = '700 11px ui-monospace, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+          ctx.fillText('REC · CÁMARA DEL CABEZAL', 36, 104);
+        }
+        ctx.restore();
+      }
+
+      // =========================================================================
+      // 7. BUCLE PRINCIPAL
+      // =========================================================================
+      let lastTime = performance.now();
+      let lastSig = null;
+
+      function frame(now) {
+        const dt = Math.min((now - lastTime) / 1000, 0.05);
+        lastTime = now;
+
+        if (state.view === 'sim') {
+          state.hitT = Math.max(0, (state.hitT || 0) - dt);
+          if (state.mode !== 'pause') advance(dt); else state.speedCmS = 0;
+          $('hud-speed').textContent = state.speedCmS.toFixed(1) + ' cm/s';
+          $('hud-dist').textContent = state.distanceM.toFixed(2) + ' m';
+          $('hud-gap').textContent = (7.2 + (state.amplitudeDeg - 10) * 0.08).toFixed(1) + ' cm';
+        } else {
+          state.explode += (state.explodeTarget - state.explode) * Math.min(1, dt * 4.5);
+          if (Math.abs(state.explodeTarget - state.explode) < 0.001) state.explode = state.explodeTarget;
+        }
+
+        if (cam.distGoal !== null) {
+          cam.distance += (cam.distGoal - cam.distance) * Math.min(1, dt * 3);
+          if (Math.abs(cam.distGoal - cam.distance) < 0.02) { cam.distance = cam.distGoal; cam.distGoal = null; }
+        }
+
+        if (state.view === 'anat') {
+          const sig = [cam.yaw, cam.pitch, cam.distance, cam.panX, cam.panZ, state.explode, state.selectedUid, state.pattern, state.numSegments, window.innerWidth, window.innerHeight].join('|');
+          if (sig === lastSig) { requestAnimationFrame(frame); return; }
+          lastSig = sig;
+        }
+        renderScene();
+        requestAnimationFrame(frame);
+      }
+
+      // =========================================================================
+      // 8. TOQUE / RATÓN
+      // =========================================================================
+      function pointInQuad(px, py, pts) {
+        let inside = false;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+          const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+          if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+        }
+        return inside;
+      }
+
+      function hitTest(px, py) {
+        for (let i = hitCircles.length - 1; i >= 0; i--) {
+          const c = hitCircles[i];
+          if (Math.hypot(px - c.x, py - c.y) <= c.r) return c;
+        }
+        for (let i = hitPolys.length - 1; i >= 0; i--) {
+          if (pointInQuad(px, py, hitPolys[i].pts)) return hitPolys[i];
+        }
+        return null;
+      }
+
+      function showInspector(key) {
+        const info = PART_INFO[key];
+        if (!info) return;
+        $('insp-tag').textContent = info.tag;
+        $('insp-title').textContent = info.title;
+        $('insp-desc').textContent = info.desc;
+        $('insp-specs').innerHTML = info.specs.map(s => `<div>• ${s}</div>`).join('');
+        $('inspector-card').classList.remove('hidden');
+      }
+
+      function clearSelection() {
+        state.selectedUid = null;
+        $('inspector-card').classList.add('hidden');
+      }
+
+      const controlPanel = $('control-panel');
+
+      function handleTap(px, py) {
+        const hit = hitTest(px, py);
+        if (hit) { state.selectedUid = hit.uid; showInspector(hit.key); }
+        else clearSelection();
+        controlPanel.classList.add('hidden');
+      }
+
+      let isDragging = false, dragMoved = false;
+      let startX = 0, startY = 0, pinchDist = 0, midX = 0, midY = 0;
+
+      canvas.addEventListener('mousedown', (e) => {
+        isDragging = true; dragMoved = false; startX = e.clientX; startY = e.clientY;
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX, dy = e.clientY - startY;
+        if (Math.hypot(dx, dy) > 4) dragMoved = true;
+        startX = e.clientX; startY = e.clientY;
+        cam.distGoal = null;
+        cam.yaw -= dx * 0.008;
+        cam.pitch = clamp(cam.pitch + dy * 0.008, 0.12, 1.48);
+      });
+      window.addEventListener('mouseup', (e) => {
+        if (isDragging && !dragMoved) handleTap(e.clientX, e.clientY);
+        isDragging = false;
+      });
+      canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        cam.distGoal = null;
+        cam.distance = clamp(cam.distance * (e.deltaY > 0 ? 1.08 : 0.92), 2.6, 22);
+      }, { passive: false });
+
+      canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          isDragging = true; dragMoved = false;
+          startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+          isDragging = false; dragMoved = true;
+          pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          midX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+          midY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+        }
+      }, { passive: true });
+
+      canvas.addEventListener('touchmove', (e) => {
+        cam.distGoal = null;
+        if (e.touches.length === 1 && isDragging) {
+          const dx = e.touches[0].clientX - startX, dy = e.touches[0].clientY - startY;
+          if (Math.hypot(dx, dy) > 5) dragMoved = true;
+          startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+          cam.yaw -= dx * 0.009;
+          cam.pitch = clamp(cam.pitch + dy * 0.009, 0.12, 1.48);
+        } else if (e.touches.length === 2) {
+          const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          if (pinchDist > 0) cam.distance = clamp(cam.distance * (pinchDist / Math.max(dist, 1)), 2.6, 22);
+          pinchDist = dist;
+          const nmx = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+          const nmy = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+          const dxw = (nmx - midX) * 0.006, dyw = (nmy - midY) * 0.006;
+          midX = nmx; midY = nmy;
+          cam.panX += -Math.cos(cam.yaw) * dxw - Math.sin(cam.yaw) * dyw;
+          cam.panZ += Math.sin(cam.yaw) * dxw - Math.cos(cam.yaw) * dyw;
+        }
+      }, { passive: true });
+
+      canvas.addEventListener('touchend', (e) => {
+        if (isDragging && !dragMoved && e.changedTouches.length === 1) {
+          handleTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+          if (e.cancelable) e.preventDefault();
+        }
+        isDragging = false;
+        pinchDist = 0;
+      });
+
+      // =========================================================================
+      // 9. INTERFAZ
+      // =========================================================================
+      $('btn-toggle-panel').addEventListener('click', () => controlPanel.classList.toggle('hidden'));
+      $('insp-close').addEventListener('click', clearSelection);
+
+      // --- Cámaras ---
+      const camBtns = ['cam-persp', 'cam-top', 'cam-front', 'cam-side', 'cam-pov'];
+      let curPreset = 'cam-persp';
+
+      function fitDist(t) {
+        const n = state.numSegments;
+        const sp = STEP * (1 + 0.95 * t);
+        return clamp(n * sp * 0.62 + 2.2, 5.5, 16);
+      }
+
+      function applyCamPreset(id) {
+        curPreset = id;
+        camBtns.forEach(b => $(b).classList.toggle('active', b === id));
+        state.pov = id === 'cam-pov' && state.view === 'sim';
+        if (id === 'cam-pov') { cam.distGoal = null; return; }
+        cam.panX = 0; cam.panZ = 0; cam.distGoal = null;
+        let P;
+        if (state.view === 'sim') {
+          const k = state.env === 'arena' ? 1.3 : 1;
+          P = {
+            'cam-persp': [0.65, 0.52, 7.2 * k], 'cam-top': [0, 1.46, 8.2 * k],
+            'cam-front': [0, 0.26, 5.2 * k], 'cam-side': [1.57, 0.28, 7.4 * k]
+          }[id];
+        } else {
+          const fd = fitDist(state.explodeTarget);
+          P = {
+            'cam-persp': [0.5, 0.7, fd], 'cam-top': [0, 1.47, fd],
+            'cam-front': [Math.PI, 0.3, Math.max(6, fd * 0.7)], 'cam-side': [1.57, 0.3, fd]
+          }[id];
+        }
+        cam.yaw = P[0]; cam.pitch = P[1]; cam.distance = P[2];
+      }
+      $('cam-persp').addEventListener('click', () => applyCamPreset('cam-persp'));
+      $('cam-top').addEventListener('click', () => applyCamPreset('cam-top'));
+      $('cam-front').addEventListener('click', () => applyCamPreset('cam-front'));
+      $('cam-side').addEventListener('click', () => applyCamPreset('cam-side'));
+      $('cam-pov').addEventListener('click', () => applyCamPreset('cam-pov'));
+
+      // --- Vistas ---
+      function updateFicha() {
+        $('an-mods').textContent = state.numSegments;
+        $('an-servos').textContent = state.numSegments - 1;
+      }
+
+      function setView(v) {
+        state.view = v;
+        lastSig = null;
+        document.body.classList.toggle('view-anat', v === 'anat');
+        $('view-sim').classList.toggle('view-active', v === 'sim');
+        $('view-anat').classList.toggle('view-active', v === 'anat');
+        $('tip-sim').style.display = v === 'sim' ? '' : 'none';
+        $('tip-anat').style.display = v === 'anat' ? '' : 'none';
+        clearSelection();
+        controlPanel.classList.add('hidden');
+        updateFicha();
+        applyCamPreset('cam-persp');
+      }
+      $('view-sim').addEventListener('click', () => setView('sim'));
+      $('view-anat').addEventListener('click', () => setView('anat'));
+
+      // --- Modos de locomoción ---
+      const quickPlayBtn = $('quick-play');
+      function setMode(m) {
+        state.mode = m;
+        $('mode-wave').classList.toggle('selected', m === 'wave');
+        $('mode-pause').classList.toggle('selected', m === 'pause');
+        $('mode-manual').classList.toggle('selected', m === 'manual');
+        $('manual-box').style.display = m === 'manual' ? 'block' : 'none';
+        $('joystick').style.display = m === 'manual' ? 'block' : 'none';
+        if (m === 'manual') state.throttle = 0;
+        if (m === 'pause') {
+          quickPlayBtn.textContent = '▶ Avanzar';
+          quickPlayBtn.classList.remove('play-active');
+        } else {
+          quickPlayBtn.textContent = '⏸ Pausar';
+          quickPlayBtn.classList.add('play-active');
+        }
+      }
+      $('mode-wave').addEventListener('click', () => setMode('wave'));
+      $('mode-pause').addEventListener('click', () => setMode('pause'));
+      $('mode-manual').addEventListener('click', () => setMode('manual'));
+      quickPlayBtn.addEventListener('click', () => setMode(state.mode === 'pause' ? 'wave' : 'pause'));
+
+      const sliderYaw = $('slider-manual-yaw');
+      function updateManualYaw(deg, keepThrottle) {
+        if (!keepThrottle) state.throttle = 1;
+        state.manualYawDeg = deg;
+        sliderYaw.value = deg;
+        $('val-manual-yaw').textContent = deg + '°';
+      }
+      sliderYaw.addEventListener('input', (e) => updateManualYaw(Number(e.target.value)));
+      $('btn-left').addEventListener('click', () => updateManualYaw(35));
+      $('btn-center').addEventListener('click', () => updateManualYaw(0));
+      $('btn-right').addEventListener('click', () => updateManualYaw(-35));
+
+      // --- Escenario ---
+      function setEnv(env) {
+        state.env = env;
+        ['studio', 'arena', 'forest', 'desert', 'photo'].forEach(e => $('env-' + e).classList.toggle('selected-blue', e === env));
+        resetSnake(0, env === 'arena' ? 3.9 : 0);
+        cam.fx = env === 'arena' ? 0 : snake.hx;
+        cam.fz = env === 'arena' ? -0.6 : snake.hz;
+        applyCamPreset(curPreset);
+      }
+      ['studio', 'arena', 'forest', 'desert'].forEach(e => $('env-' + e).addEventListener('click', () => setEnv(e)));
+      $('bg-file').addEventListener('change', (ev) => {
+        const f = ev.target.files[0]; if (!f) return;
+        const img = new Image();
+        img.onload = () => { state.bgImg = img; setEnv('photo'); };
+        img.src = URL.createObjectURL(f);
+      });
+
+      // --- Acabado ---
+      const PATS = ['tactical', 'python', 'coral', 'neon'];
+      PATS.forEach(p => $('style-' + p).addEventListener('click', () => {
+        state.pattern = p;
+        PATS.forEach(q => $('style-' + q).classList.toggle('selected', q === p));
+      }));
+
+      // --- Sliders ---
+      $('slider-segments').addEventListener('input', (e) => {
+        state.numSegments = Number(e.target.value);
+        $('val-segments').textContent = state.numSegments;
+        updateFicha();
+        if (state.view === 'anat') cam.distGoal = fitDist(state.explodeTarget);
+        if (state.selectedUid) clearSelection();
+      });
+      $('slider-amp').addEventListener('input', (e) => {
+        state.amplitudeDeg = Number(e.target.value);
+        $('val-amp').textContent = state.amplitudeDeg + '°';
+      });
+      $('slider-freq').addEventListener('input', (e) => {
+        state.frequencyHz = Number(e.target.value);
+        $('val-freq').textContent = state.frequencyHz.toFixed(1) + ' Hz';
+      });
+      $('slider-phase').addEventListener('input', (e) => {
+        state.phaseRad = Number(e.target.value);
+        $('val-phase').textContent = state.phaseRad.toFixed(2) + ' rad';
+      });
+
+      // --- Armar / Desarmar ---
+      const btnExplode = $('btn-explode');
+      const sliderExplode = $('slider-explode');
+      function setExplodeTarget(t) {
+        state.explodeTarget = clamp(t, 0, 1);
+        sliderExplode.value = Math.round(state.explodeTarget * 100);
+        $('val-explode').textContent = Math.round(state.explodeTarget * 100) + '%';
+        btnExplode.textContent = state.explodeTarget > 0.5 ? '🔩 Armar' : '🔧 Desarmar';
+        cam.distGoal = fitDist(state.explodeTarget);
+      }
+      btnExplode.addEventListener('click', () => setExplodeTarget(state.explodeTarget > 0.5 ? 0 : 1));
+      sliderExplode.addEventListener('input', (e) => setExplodeTarget(Number(e.target.value) / 100));
+
+      // --- Índice de piezas ---
+      const chipBox = $('part-chips');
+      CHIPS.forEach(([key, label]) => {
+        const b = document.createElement('button');
+        b.className = 'chip';
+        b.textContent = label;
+        b.addEventListener('click', () => {
+          if (INTERNAL_KEYS.indexOf(key) >= 0 && state.explodeTarget < 0.5) setExplodeTarget(1);
+          state.selectedUid = firstUid(key);
+          showInspector(key);
+          controlPanel.classList.add('hidden');
+        });
+        chipBox.appendChild(b);
+      });
+
+      // =========================================================================
+      // 10. ARRANQUE
+      // =========================================================================
+      // --- Reinicio, teclado y toque cancelado ---
+      $('quick-reset').addEventListener('click', () => { state.distanceM = 0; setEnv(state.env); });
+      canvas.addEventListener('touchcancel', () => { isDragging = false; pinchDist = 0; });
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { clearSelection(); controlPanel.classList.add('hidden'); return; }
+        if (state.view !== 'sim') return;
+        if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); setMode(state.mode === 'pause' ? 'wave' : 'pause'); }
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setMode('manual'); updateManualYaw(e.key === 'ArrowLeft' ? 35 : -35); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); updateManualYaw(0); }
+        else if ((e.key === 'r' || e.key === 'R') && e.target.tagName !== 'INPUT') $('quick-reset').click();
+      });
+
+      const joy = $('joystick'), knob = $('joy-knob'); let joyId = null;
+      function joyMove(e) {
+        const r = joy.getBoundingClientRect(), R = r.width / 2 - 25;
+        let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+        const m = Math.hypot(dx, dy); if (m > R) { dx *= R / m; dy *= R / m; }
+        knob.style.transform = `translate(${dx}px,${dy}px)`;
+        updateManualYaw(Math.round(-dx / R * 45), true);
+        state.throttle = clamp(-dy / R, 0, 1);
+      }
+      joy.addEventListener('pointerdown', (e) => { joyId = e.pointerId; joy.setPointerCapture(joyId); joyMove(e); });
+      joy.addEventListener('pointermove', (e) => { if (e.pointerId === joyId) joyMove(e); });
+      const joyEnd = (e) => { if (e.pointerId !== joyId) return; joyId = null; knob.style.transform = ''; state.throttle = 0; updateManualYaw(0, true); };
+      joy.addEventListener('pointerup', joyEnd); joy.addEventListener('pointercancel', joyEnd);
+
+      resetSnake(0, 0);
+      cam.fx = snake.hx; cam.fz = snake.hz;
+      updateFicha();
+      renderScene();
+      requestAnimationFrame(frame);
+    })();
+  </script>
+<script>
+    if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+      window.addEventListener('load', () => { try { navigator.serviceWorker.register('sw.js'); } catch (e) {} });
+    }
+  </script>
+</body>
+</html>
